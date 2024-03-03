@@ -1,0 +1,86 @@
+version: '3'
+services:
+  # PostgresDB Service
+  postgres_hezzl_api:
+    image: postgres:16
+    container_name: postgres_hezzl_api
+    restart: always
+    ports:
+      - ${POSTGRES_PORT_HOST}:${POSTGRES_PORT_REMOTE}
+    volumes:
+      - './volume/postgres:/var/lib/postgresql/data'
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_DB: "hezzl_api"
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+      POSTGRES_PORT_HOST: ${POSTGRES_PORT_HOST}
+      POSTGRES_PORT_REMOTE: ${POSTGRES_PORT_REMOTE}
+      POSTGRES_ROOT_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+    networks:
+      - hezzl_api_network
+
+  clickhouse_hezzl_api:
+    image: yandex/clickhouse-server
+    container_name: clickhouse_hezzl_api
+    restart: always
+    ports:
+      - ${CLICKHOUSE_PORT_HOST}:${CLICKHOUSE_PORT_REMOTE}
+      - ${CLICKHOUSE_NATIVE_TCP_PORT}:${CLICKHOUSE_NATIVE_TCP_PORT} # Native TCP port
+    environment:
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    networks:
+      - hezzl_api_network
+
+  nats_hezzl_api:
+    image: nats
+    container_name: nats_hezzl_api
+    restart: always
+    ports:
+      - ${NATS_PORT_HOST}:${NATS_PORT_REMOTE} # Client port
+      - ${NATS_CLUSTER_PORT}:${NATS_CLUSTER_PORT} # Cluster port
+      - ${NATS_MONITORING_PORT}:${NATS_MONITORING_PORT} # HTTP monitoring port
+    networks:
+      - hezzl_api_network
+
+  redis_hezzl_api:
+    image: redis:latest
+    restart: always
+    ports:
+      - ${REDIS_PORT_HOST}:${REDIS_PORT_REMOTE}
+    container_name: redis_hezzl_api
+    environment:
+      REDIS_PORT_HOST: ${REDIS_PORT_HOST}
+      REDIS_PORT_REMOTE: ${REDIS_PORT_REMOTE}
+    networks:
+      - hezzl_api_network
+
+  go_api_hezzl_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go_api_hezzl_api
+    restart: always
+#    command: ["./entrypoint.sh"]
+    volumes:
+      - './logger:/app/logger'
+    depends_on:
+      - postgres_hezzl_api
+      - clickhouse_hezzl_api
+      - redis_hezzl_api
+    networks:
+      - hezzl_api_network
+# Docker Networks
+networks:
+  hezzl_api_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.101.0.0/16"  # Конфигурация сети
